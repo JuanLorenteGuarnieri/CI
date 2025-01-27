@@ -1,3 +1,5 @@
 # Ignore image files
 *.tiff
 *.CR2
+*.png
+*.jpg
