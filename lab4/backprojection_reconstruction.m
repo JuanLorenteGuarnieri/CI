@@ -38,25 +38,31 @@ if isscalar(vol_size)
     vol_size = [vol_size, vol_size, vol_size];
 end
 
-% Ensure volumePosition and volumeSize have 3 elements.
-%if numel(vol_center) < 3
-%  warning('Volume position has fewer than 3 elements. Filling missing dimensions with zeros.');
-%  vol_center = [vol_center; zeros(3-numel(vol_center),1)];
-%end
-%if numel(vol_size) < 3
-%  warning('Volume size has fewer than 3 elements. Repeating the provided value for missing dimensions.');
-%  vol_size = [vol_size; repmat(vol_size(1), 3-numel(vol_size), 1)];
-%end
+num_voxels = [8, 8, 8];  % Voxel resolution (x, y, z)
 
-voxel_res = [8, 8, 8];  % Voxel resolution (x, y, z)
 
-% Create linearly spaced vectors for each dimension.
-x_lin = linspace(vol_center(1) - vol_size(1)/2, vol_center(1) + vol_size(1)/2, voxel_res(1));
-y_lin = linspace(vol_center(2) - vol_size(2)/2, vol_center(2) + vol_size(2)/2, voxel_res(2));
-z_lin = linspace(vol_center(3) - vol_size(3)/2, vol_center(3) + vol_size(3)/2, voxel_res(3));
+% Compute the voxel spacing (resolution) in each direction
+voxel_res = vol_size ./ num_voxels;
+
+% Generate 1D coordinate grids for each axis
+x = linspace(vol_center(1) - vol_size(1)/2 + voxel_res(1)/2, ...
+             vol_center(1) + vol_size(1)/2 - voxel_res(1)/2, num_voxels(1));
+         
+y = linspace(vol_center(2) - vol_size(2)/2 + voxel_res(2)/2, ...
+             vol_center(2) + vol_size(2)/2 - voxel_res(2)/2, num_voxels(2));
+         
+z = linspace(vol_center(3) - vol_size(3)/2 + voxel_res(3)/2, ...
+             vol_center(3) + vol_size(3)/2 - voxel_res(3)/2, num_voxels(3));
+
+% Create 3D grid of coordinates
+[X, Y, Z] = ndgrid(x, y, z);
+
+% Stack the coordinates into an nx x ny x nz x 3 matrix
+voxel_pos = cat(4, X, Y, Z);
+
 
 % Initialize the reconstructed volume.
-G = zeros(voxel_res);
+G = zeros(num_voxels);
 
 %% 3. Extract measurement parameters and positions
 t0 = dataset.t0;          % temporal offset (in meters, since deltaT is in optical distance units)
@@ -110,10 +116,12 @@ if isConfocal
   %end
 else
   % Non-confocal data: iterate over each voxel and sum over laser-SPAD combinations.
-  for idx = 1:length(x_lin)
-  for idy = 1:length(y_lin)
-  for idz = 1:length(z_lin)
-    xv = [x_lin(idx), y_lin(idy), z_lin(idz)];
+  
+  voxel_shape = size(voxel_pos);
+  for idx = 1:voxel_shape(1)
+  for idy = 1:voxel_shape(2)
+  for idz = 1:voxel_shape(3)
+    xv = voxel_pos(idx, idy, idz);
     voxel_sum = 0;
     laser_size = size(laserPos);
     for i = 1:laser_size(1)
@@ -138,16 +146,14 @@ else
         d4 = norm(origin_spad - pos_spad);
         total_distance = d1 + d2 + d3 + d4;
         
-        t_bin = round((total_distance - t0)/deltaT) + 1;
-        if t_bin >= 1 && t_bin <= size(H,5)
-          voxel_sum = voxel_sum + H(i, j, xsi, xsj, t_bin);
+        tv = round(total_distance/deltaT) + t0;
+        if tv >= 1 && tv <= size(H,5)
+          G(idx, idy, idz) = G(idx, idy, idz) + H(i, j, xsi, xsj, tv);
         end
       end
       end
     end
     end
-    
-    G(idx, idy, idz) = voxel_sum; 
   end  
   end
   end
