@@ -15,7 +15,7 @@
 clear; clc; close all;
 
 %% 1. Load the dataset
-filename = 'data/planes_d=0.5_l=[16x16]_s=[16x16].mat';  % <-- Update with your data file
+filename = 'data/Z_d=0.5_l=[1x1]_s=[256x256].mat';  % <-- Update with your data file
 %filename = 'data/planes_d=0.5_l=[16x16]_s=[16x16].mat';
 %dataset = load_hdf5_dataset(filename);
 dataset = load(filename).data;
@@ -42,11 +42,16 @@ num_voxels = [8, 8, 8];  % Voxel resolution (x, y, z)
 
 
 % Compute the voxel spacing (resolution) in each direction
-voxel_res = vol_size ./ num_voxels;
+%voxel_res = vol_size ./ num_voxels;
 % Generate 1D coordinate grids for each axis
-x = linspace(vol_center(1) - vol_size(1)/2 + voxel_res(1)/2, vol_center(1) + vol_size(1)/2 - voxel_res(1)/2, num_voxels(1));
-y = linspace(vol_center(2) - vol_size(2)/2 + voxel_res(2)/2, vol_center(2) + vol_size(2)/2 - voxel_res(2)/2, num_voxels(2));
-z = linspace(vol_center(3) - vol_size(3)/2 + voxel_res(3)/2, vol_center(3) + vol_size(3)/2 - voxel_res(3)/2, num_voxels(3));
+%x = linspace(vol_center(1) - vol_size(1)/2 + voxel_res(1)/2, vol_center(1) + vol_size(1)/2 - voxel_res(1)/2, num_voxels(1));
+%y = linspace(vol_center(2) - vol_size(2)/2 + voxel_res(2)/2, vol_center(2) + vol_size(2)/2 - voxel_res(2)/2, num_voxels(2));
+%z = linspace(vol_center(3) - vol_size(3)/2 + voxel_res(3)/2, vol_center(3) + vol_size(3)/2 - voxel_res(3)/2, num_voxels(3));
+%[X, Y, Z] = ndgrid(x, y, z);
+% Stack the coordinates into an nx x ny x nz x 3 matrix
+%voxel_pos = cat(4, X, Y, Z);
+
+vox_size = vol_size ./ num_voxels;
 
 
 % Initialize the reconstructed volume.
@@ -100,16 +105,23 @@ if isConfocal
   %      voxel_sum = voxel_sum + H(p, t_bin);
   %    end
   %  end
-  %  G(idx) = voxel_sum;voxel_pos
+  %  G(idx) = voxel_sum;
   %end
 else
   % Non-confocal data: iterate over each voxel and sum over laser-SPAD combinations.
   
-  for idx = 1:num_voxels(1)
-  for idy = 1:num_voxels(2)
-  for idz = 1:num_voxels(3)
-    %xv = voxel_pos(idx, idy, idz);
-    xv = [x(idx), y(idy), z(idz)];
+  for voxX = 1:num_voxels(1)
+  idx = voxX - num_voxels(1)/2 - 0.5;
+  xc = vol_center(1) - voxX*vox_size(1);
+
+  for voxY = 1:num_voxels(2)
+  idy = voxY - num_voxels(2)/2 - 0.5;
+  yc = vol_center(2) - voxY*vox_size(2);
+
+  for voxZ = 1:num_voxels(3)
+    idz = voxZ - num_voxels(3)/2 - 0.5;
+    zc = vol_center(3) - voxZ*vox_size(3);
+    xv = [xc, yc, zc];
 
     voxel_sum = 0;
     laser_size = size(laserPos);
@@ -119,8 +131,8 @@ else
       pos_laser = reshape(pos_laser,1,[]); % or squeeze() transposed
 
       spadSize = size(spadPos);
-      for xsi = 1:spadSize(1)
-      for xsj = 1:spadSize(2)
+      for xsi = 1:4:spadSize(1)
+      for xsj = 1:4:spadSize(2)
         pos_spad = spadPos(xsi, xsj, :);
         pos_spad = reshape(pos_spad,1,[]); % or squeeze() transposed
 
@@ -129,15 +141,15 @@ else
         %   2. From the laser position to the voxel
         %   3. From the voxel to the SPAD position on the wall
         %   4. From the SPAD position to the SPAD device
-        d1 = norm(pos_laser(:) - origin_laser(:));
-        d2 = norm(xv(:) - pos_laser(:));
-        d3 = norm(pos_spad(:) - xv(:));
-        d4 = norm(origin_spad(:) - pos_spad(:));
+        d1 = norm(pos_laser - origin_laser);
+        d2 = norm(xv - pos_laser);
+        d3 = norm(pos_spad - xv);
+        d4 = norm(origin_spad - pos_spad);
         total_distance = d1 + d2 + d3 + d4;
         
-        tv = round((total_distance - t0)/deltaT);
+        tv = round(total_distance/deltaT) + t0;
         if tv >= 1 && tv <= size(H,5)
-          G(idx, idy, idz) = G(idx, idy, idz) + H(i, j, xsi, xsj, tv);
+          G(voxX, voxY, voxZ) = G(voxX, voxY, voxZ) + H(i, j, xsi, xsj, tv);
         end
       end
       end
@@ -159,7 +171,7 @@ G_filtered = imfilter(G, -f_lap, 'symmetric');
 %% 6. Visualization of the reconstructed volume
 % Use volshow (available in recent MATLAB versions) with default settings.
 figure;
-vs_h = volshow(G_filtered, RenderingStyle="MaximumIntensityProjection", Colormap=hot);
+vs_h = volshow(G, RenderingStyle="MaximumIntensityProjection", Colormap=hot);
 vs_h.Parent.BackgroundColor = [0 0 0];
 vs_h.Parent.GradientColor = [0 0 0];
 title('Reconstructed Volume with Laplacian Filtering');
