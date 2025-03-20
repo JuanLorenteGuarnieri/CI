@@ -15,14 +15,14 @@
 clear; clc; close all;
 
 %% 1. Load the dataset
-filename = 'data/planes_d=0.5_l=[16x16]_s=[16x16].mat';  % <-- Update with your data file
-%filename = 'data/planes_d=0.5_l=[16x16]_s=[16x16].mat';
+filename = 'data/bunny_d=0.5_c=[256x256].mat';  % <-- Update with your data file
+% filename = 'data/planes_d=0.5_l=[16x16]_s=[16x16].mat';
 %dataset = load_hdf5_dataset(filename);
 dataset = load(filename).data;
 
 % Determine if the dataset is confocal
 if ndims(dataset.data) == 3
-  isConfocal = t13rue;
+  isConfocal = true;
   fprintf('The dataset is confocal.\n');
 else
   isConfocal = false;
@@ -35,10 +35,10 @@ vol_center = dataset.volumePosition;   % 3x1 vector [x, y, z]
 vol_size   = dataset.volumeSize;       % 3x1 vector [sx, sy, sz]
 
 if isscalar(vol_size)
-    vol_size = [vol_size, vol_size, vol_size];
+  vol_size = [vol_size, vol_size, vol_size];
 end
 
-num_voxels = [8, 8, 8];  % Voxel resolution (x, y, z)
+num_voxels = [20,20,20];  % Voxel resolution (x, y, z)
 
 
 % Compute the voxel spacing (resolution) in each direction
@@ -75,76 +75,82 @@ end
 fprintf('Starting back-projection reconstruction...\n');
 tic;
 if isConfocal
-  % Confocal data: iterate over each voxel and for each measurement position.
-  %for idx = 1:num_voxels
-  %  xv = [X(idx), Y(idx), Z(idx)];  % current voxel center
-  %  voxel_sum = 0;
-  %  % Iterate over each measurement position (laser and SPAD co-located)
-  %  for p = 1:num_positions
-  %    pos = positions(p, :);
-  %    % Calculate the 4 segments of the path:
-  %    %   1. Laser device to the position on the wall
-  %    %   2. Wall to voxel
-  %    %   3. Voxel back to the same position on the wall
-  %    %   4. Position on the wall to the SPAD device
-  %    d1 = norm(pos - origin_laser);
-  %    d2 = norm(xv - pos);
-  %    d3 = norm(pos - xv);
-  %    d4 = norm(origin_spad - pos);
-  %    total_distance = d1 + d2 + d3 + d4;
-
-  %    % Convert the total optical distance to a time index.
-  %    t_bin = round((total_distance - t0)/deltaT) + 1;
-  %    % Check that the index is within bounds.
-  %    if t_bin >= 1 && t_bin <= size(H,3)
-  %      voxel_sum = voxel_sum + H(p, t_bin);
-  %    end
-  %  end
-  %  G(idx) = voxel_sum;voxel_pos
-  %end
-else
-  % Non-confocal data: iterate over each voxel and sum over laser-SPAD combinations.
-  
+  % For confocal measurements, the laser and SPAD are at the same positions.
   for idx = 1:num_voxels(1)
-  for idy = 1:num_voxels(2)
-  for idz = 1:num_voxels(3)
-    %xv = voxel_pos(idx, idy, idz);
-    xv = [x(idx), y(idy), z(idz)];
+    for idy = 1:num_voxels(2)
+      for idz = 1:num_voxels(3)
+        %xv = voxel_pos(idx, idy, idz);
+        xv = [x(idx), y(idy), z(idz)];
 
-    voxel_sum = 0;
-    laser_size = size(laserPos);
-    for i = 1:laser_size(1)
-    for j = 1:laser_size(2)
-      pos_laser = laserPos(i, j, :);
-      pos_laser = reshape(pos_laser,1,[]); % or squeeze() transposed
+        voxel_sum = 0;
+        laser_size = size(positions);
+        for i = 1:laser_size(1)
+          for j = 1:laser_size(2)
+            pos_laser = positions(i, j, :);
+            pos_laser = reshape(pos_laser,1,[]); % or squeeze() transposed
 
-      spadSize = size(spadPos);
-      for xsi = 1:spadSize(1)
-      for xsj = 1:spadSize(2)
-        pos_spad = spadPos(xsi, xsj, :);
-        pos_spad = reshape(pos_spad,1,[]); % or squeeze() transposed
+            % 4 segments of the path:
+            %   1. From the laser device to the laser position on the wall
+            %   2. From the laser position to the voxel
+            %   3. From the voxel back to the wall point (confocal: same as d2).
+            %   4. From the SPAD position to the SPAD device
+            d1 = norm(pos_laser(:) - origin_laser(:));
+            d2 = norm(xv(:) - pos_laser(:));
+            d3 = d2;%= norm(pos_laser(:) - xv(:));
+            d4 = norm(origin_spad(:) - pos_laser(:));
+            total_distance = d1 + d2 + d3 + d4;
 
-        % 4 segments of the path:
-        %   1. From the laser device to the laser position on the wall
-        %   2. From the laser position to the voxel
-        %   3. From the voxel to the SPAD position on the wall
-        %   4. From the SPAD position to the SPAD device
-        d1 = norm(pos_laser(:) - origin_laser(:));
-        d2 = norm(xv(:) - pos_laser(:));
-        d3 = norm(pos_spad(:) - xv(:));
-        d4 = norm(origin_spad(:) - pos_spad(:));
-        total_distance = d1 + d2 + d3 + d4;
-        
-        tv = round((total_distance - t0)/deltaT);
-        if tv >= 1 && tv <= size(H,5)
-          G(idx, idy, idz) = G(idx, idy, idz) + H(i, j, xsi, xsj, tv);
+            tv = round((total_distance - t0)/deltaT);
+            if tv >= 1 && tv <= size(H,3)
+              G(idx, idy, idz) = G(idx, idy, idz) + H(i, j, tv);
+            end
+          end
         end
       end
+    end
+  end
+else
+  % Non-confocal data: iterate over each voxel and sum over laser-SPAD combinations.
+  for idx = 1:num_voxels(1)
+    for idy = 1:num_voxels(2)
+      for idz = 1:num_voxels(3)
+        %xv = voxel_pos(idx, idy, idz);
+        xv = [x(idx), y(idy), z(idz)];
+
+        voxel_sum = 0;
+        laser_size = size(laserPos);
+        for i = 1:laser_size(1)
+          for j = 1:laser_size(2)
+            pos_laser = laserPos(i, j, :);
+            pos_laser = reshape(pos_laser,1,[]); % or squeeze() transposed
+
+            spadSize = size(spadPos);
+            for xsi = 1:spadSize(1)
+              for xsj = 1:spadSize(2)
+                pos_spad = spadPos(xsi, xsj, :);
+                pos_spad = reshape(pos_spad,1,[]); % or squeeze() transposed
+
+                % 4 segments of the path:
+                %   1. From the laser device to the laser position on the wall
+                %   2. From the laser position to the voxel
+                %   3. From the voxel to the SPAD position on the wall
+                %   4. From the SPAD position to the SPAD device
+                d1 = norm(pos_laser(:) - origin_laser(:));
+                d2 = norm(xv(:) - pos_laser(:));
+                d3 = norm(pos_spad(:) - xv(:));
+                d4 = norm(origin_spad(:) - pos_spad(:));
+                total_distance = d1 + d2 + d3 + d4;
+
+                tv = round((total_distance - t0)/deltaT);
+                if tv >= 1 && tv <= size(H,5)
+                  G(idx, idy, idz) = G(idx, idy, idz) + H(i, j, xsi, xsj, tv);
+                end
+              end
+            end
+          end
+        end
       end
     end
-    end
-  end  
-  end
   end
 end
 
