@@ -5,3 +5,4 @@
 *.jpg
 *.hdf5
 lab4/data
+*.mat
