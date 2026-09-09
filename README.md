@@ -1,7 +1,7 @@
-# Advanced Computational Imaging (ACI)
+# Computational Imaging (CI)
 
 ## Course Overview
-The *Advanced Computational Imaging* course focuses on the study and application of advanced and emerging techniques in computational imaging. Students will design and implement algorithmic solutions while exploring state-of-the-art methods and open problems in the field. Additionally, they will develop the skills to present acquired knowledge and work independently or in teams.
+The *Computational Imaging* course focuses on the study and application of advanced and emerging techniques in computational imaging. Students will design and implement algorithmic solutions while exploring state-of-the-art methods and open problems in the field. Additionally, they will develop the skills to present acquired knowledge and work independently or in teams.
 
 ## Learning Outcomes
 By the end of the course, students will have acquired the following competencies:
